@@ -7,7 +7,13 @@ var app = express();
 app.use("/appCliente", express.static("cliente_rest")); // express.statitic(Nombre de la carpeta donde se encuentran los archivos del cliente)
 app.use(express.json());
 
-var conexion = require("./conexion_mysql.js");
+// 1. Importar el cliente de Supabase
+const { createClient } = require('@supabase/supabase-js');
+
+// 2. Configurar con tu URL y tu Public Key (anon key)
+const supabaseUrl = 'https://ordhwdensqniqbcwxfxq.supabase.co';
+const supabaseKey = 'sb_publishable_G1s4ATQuhNI4Leoy3bHrsA_f1daC7jO'; // la que sale en Project Settings > API
+const supabase = createClient(supabaseUrl, supabaseKey);
 
 // LOGIN
 // Comprueba que el usuario y contraseña estén bien y devuelve el id del usuario en caso de ser correcto
