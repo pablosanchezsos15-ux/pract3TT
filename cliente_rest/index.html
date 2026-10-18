@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Aplicación gestor</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <main>
+        <h1>APLICACIÓN GESTOR</h1>
+
+        <div id="login" class="seccion activa">
+            <h2>Acceso</h2>
+            <label>Usuario:</label>
+            <input type="text" id="usuario" name="usuario"><br>
+            <label>Contraseña:</label>
+            <input type="password" id="password" name="password"><br>
+            <button onclick="acceder()" class="css">Entrar</button>
+            <button onclick="cambiarSeccion('registro')">Resgistrarse</button>
+        </div>
+        
+        <div id="registro" class="seccion">
+            <h2>Datos Gestor</h2>
+            <label>Nombre:</label>
+            <input type="text" id="nombre" name="nombre"><br>
+            <label>Apellidos:</label>
+            <input type="text" id="apellidos" name="apellidos"><br>
+            <label>Usuario:</label>
+            <input type="text" id="usuarioReg" name="usuario"><br>
+            <label>Contraseña:</label>
+            <input type="password" id="passwordReg" name="password"><br>
+            <button onclick="registrarActualizar();" class="css">Guardar</button>
+            <button onclick="volverAnterior();">Cancelar</button>  <!--Volver a login o a incio-->
+        </div>
+
+        <div id="principal" class="seccion">
+
+            <h2>Inicio</h2>
+            <p id="nombreUsuario"></p>
+            <h3>Búsqueda de recurso</h3>
+            <label>Categoría:</label>
+            <select id="categorias" onchange="cargarModelos(false)">
+            </select><br>
+            <label>Modelo:</label>
+            <select id="modelos">
+            </select><br>
+            <label>Ubicación:</label>
+            <select id="ubicaciones">
+            </select><br>
+            <label>Estado:</label>
+            <select id="estados">
+            </select><br>
+            <button onclick="buscarRecursos()" class="css">Buscar</button>
+            <table>
+                <thead>
+                    <th>Nº Serie</th>
+                    <th>Categoría</th>
+                    <th>Modelo</th>
+                    <th>Ubicación</th>
+                    <th>Estado</th>
+                    <th id="ultimaColumna"></th>
+                </thead>
+                <tbody id="tablaRecursos"></tbody> 
+            </table>
+            <button onclick="abrirRecursoNuevo()">Añadir recurso</button><br>
+            <!--! Tabla nueva: ranking de reservas por área médica -->
+            <h3>Ranking de reservas por área médica</h3>
+            <button id="btnEnviarMinisterio" onclick="enviarReservasMinisterio()">Enviar reservas al Ministerio</button> <!--! Botón nuevo: POST al Ministerio (encima de la tabla) -->
+            <table>
+                <thead>
+                    <th>Ranking</th>
+                    <th>Área Médica</th>
+                    <th>Reservas Totales</th>
+                </thead>
+                <tbody id="tablaRanking"></tbody>
+            </table>
+            <button id="btnActualizarRanking" onclick="cargarRanking()">Actualizar tabla</button> <!--! Botón nuevo: vuelve a cargar el ranking (debajo de la tabla) -->
+            <h3>Avisos</h3>
+            <table>
+                <thead>
+                    <th>Fecha</th>
+                    <th>Origen</th>
+                    <th>Mensaje</th>
+                </thead>
+                <tbody id="tablaAvisos"></tbody>
+            </table>
+            <div class="salir">
+                <button onclick="cerrarSesion()">Salir</button>
+            </div>
+        </div>
+
+        <div id="recursos" class="seccion">
+            <h2>Recurso</h2>
+            <h3>Dato recursos</h3>
+            <label>Categoría:</label>
+            <select id="categoriasRecursos" onchange="cargarModelos(true)">
+            </select><br>
+            <label>Modelo:</label>
+            <select id="modelosRecursos">
+            </select><br>
+            <label>Núm. Serie: </label>
+            <input type="text" id="numSerie" nombre="numSerie"><br>
+            <label>Ubicación:</label>
+            <select id="ubicacionesRecursos">
+            </select><br>
+            <label>Estado:</label>
+            <select id="estadosRecursos" >
+            </select><br>
+            <button onclick="modificarRecurso()" class="css">Guardar</button>
+            <h3>Reservas</h3>
+            <table>
+                <thead>
+                    <th>Sanitario</th>
+                    <th>H. estim.</th>
+                    <th>F. Petición</th>
+                    <th>F. inicio</th>
+                    <th>F. Fin</th>
+                </thead>
+                <tbody id="tablaReservas"></tbody>
+            </table>
+            <h3>Reseñas</h3>    
+            <table>
+                <thead>
+                    <th>Fecha</th>
+                    <th>Sanitario</th>
+                    <th>Valoración</th>
+                    <th>Comentario</th>
+                </thead>
+                <tbody id="tablaResenyas"></tbody>
+            </table>
+            <div class="salir">
+                <button onclick="volverPrincipal()">Volver al listado</button>
+            </div>
+        </div>
+    </main>
+    <script src="rest.js"></script> <!-- Siempre este antes ya que main tiene dependencias de rest -->
+    <script src="main.js"></script>  
+</body>
+</html>

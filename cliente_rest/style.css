@@ -1,0 +1,91 @@
+.seccion{ 
+    display:none;
+}
+.activa{
+    display:block;
+}
+
+body {
+    font-family: sans-serif;
+    line-height: 1.6;
+    margin: 20px;
+    background-color: #f0f2f5;
+}
+
+main {
+    max-width: 1200px;
+    margin: auto;
+    background: white;
+    padding: 20px;
+    border: 1px solid #ccc;
+    border-radius: 5px;
+}
+
+h1 {
+    color: #2c3e50;
+    font-size: 24px;
+    font-weight: 600;
+    padding-left: 15px;
+    border-left: 5px solid #007bff; /* Línea vertical azul */
+    margin: 20px 0 30px 20px;       
+    letter-spacing: 1px;
+}
+
+h2, h3 {
+    border-bottom: 1px solid #007bff; /* Líneas horizontales azules */
+}
+
+label{ /* Etiquetas para formularios */
+    display: inline-block; /*Para que todos los campos estén en la misma posición horizontal*/
+    width: 100px;
+    margin-top: 10px;
+    margin-left: 20px;
+}
+
+input, select {
+    padding: 5px;
+    margin-bottom: 5px;
+}
+
+button {
+    padding: 8px 15px;
+    cursor: pointer;
+    background-color: #007bff;
+    color: white;
+    border: none;
+    border-radius: 3px;
+    margin-top: 10px;
+}
+
+.css {
+    margin-left: 120px;
+}
+
+.editar {
+    margin-left: 20px;
+}
+
+button:hover {
+    background-color: #0056b3;
+}
+
+table {
+    width: 100%;
+    margin-top: 20px;
+    border-collapse: collapse;
+}
+
+th, td {
+    border: 1px solid black;
+    text-align: center;
+    padding: 10px;
+}
+
+th {
+    background-color: #f8f9fa;
+}
+
+.salir {
+    display: flex;
+    justify-content: flex-end;
+}
