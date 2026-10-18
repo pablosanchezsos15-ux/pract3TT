@@ -23,29 +23,27 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 app.post("/api/gestores/login", function(req,res){
     // req.body ya que la información se pasa en el cuerpo, no en la URL porque sería inseguro
     console.log(req.body);
-    // Se usa la conexión a la base de datos para realizar la consulta
-    // SELECT devuelve un array de objetos, cada objeto es una fila de la tabla y cada propiedad del objeto es una columna de la tabla
-    var sql = "SELECT id FROM gestores WHERE usuario = ? AND password = ?";
-    
-    conexion.query(sql, [req.body.usuario, req.body.password], function (err, id) {
-        if (err) {
-            console.log("Error al realizar la select", err);
+    // Con Supabase no se escribe el SQL: from() indica la tabla, select() las columnas y eq() equivale a WHERE columna = valor
+    // El resultado es un objeto {data, error}: data es un array de objetos (las filas) y error el fallo, si lo hay
+    supabase.from("gestores").select("id").eq("usuario", req.body.usuario).eq("password", req.body.password).then(function(resultado){
+        if (resultado.error) {
+            console.log("Error al realizar la select", resultado.error);
             res.status(500).json("Error al realizar la consulta");
             return;
-        } 
-        if (id.length == 0) {
+        }
+        if (resultado.data.length == 0) {
             // Si no encuentra el usuario con esa contraseña, devuelve un array vacío
             res.status(403).json("Credenciales inválidas"); // login incorrecto
             return;
         }
-            // Te da un array de objetos que solo contiene el id del usuario, por eso se hace id[0].id
-            var contenido = { //? contenido del token
-                usuario: id[0].id, //?
-                expira: Date.now() + 60 * 60 * 1000 //? expira dentro de 1 hora (en ms)
-            }; //?
-            var token = jwt.encode(contenido, clave); //? Se crea el token firmado con la clave
-            res.json({id: id[0].id, token: token}); //? Mandamos el id y el token al cliente
-            return;
+        // Te da un array de objetos que solo contiene el id del usuario, por eso se hace data[0].id
+        var contenido = { //? contenido del token
+            usuario: resultado.data[0].id, //?
+            expira: Date.now() + 60 * 60 * 1000 //? expira dentro de 1 hora (en ms)
+        }; //?
+        var token = jwt.encode(contenido, clave); //? Se crea el token firmado con la clave
+        res.json({id: resultado.data[0].id, token: token}); //? Mandamos el id y el token al cliente
+        return;
     });
 })
 
@@ -54,23 +52,22 @@ app.post("/api/gestores/login", function(req,res){
 app.post("/api/gestores", function(req, res){
     console.log(req.body);
 
-        // 2. El usuario no existe: se inserta
-        // INSERT devuelve un objeto con la propiedad insertId que es el id del nuevo usuario
-        var sql = "INSERT INTO gestores (nombre, apellidos, usuario, password) VALUES (?, ?, ?, ?)";
-        var datos = [req.body.nombre, req.body.apellidos, req.body.usuario, req.body.password];
-        conexion.query(sql, datos, function (err, resultado) {
-            if (err) {
-            if (err.code === "ER_DUP_ENTRY") {
+    // insert() añade la fila. Con select("id") pedimos que nos devuelva el id que ha generado la base de datos
+    var gestor = {nombre: req.body.nombre, apellidos: req.body.apellidos, usuario: req.body.usuario, password: req.body.password};
+    supabase.from("gestores").insert(gestor).select("id").then(function(resultado){
+        if (resultado.error) {
+            // 23505 es el código de Postgres para un valor duplicado (equivale a ER_DUP_ENTRY de MySQL)
+            if (resultado.error.code === "23505") {
                 res.json("El usuario ya existe");
                 return;
             }
-            console.log("Error al insertar el gestor", err);
+            console.log("Error al insertar el gestor", resultado.error);
             res.status(500).json("Error al crear el usuario");
             return;
         }
-        console.log("Gestor creado con id", resultado.insertId);
+        console.log("Gestor creado con id", resultado.data[0].id);
         res.status(201).json("Usuario creado correctamente");
-        });
+    });
 })
 
 //? Antes de este use, los servicios son públicos (login y registro, no necesitan token)
@@ -112,41 +109,48 @@ app.put("/api/gestores/:id", function(req, res){
     console.log(req.body);
     var idGestor = req.params.id;
 
-    // Base sin el password de momento
-    var sql = "UPDATE gestores SET nombre = ?, apellidos = ?, usuario = ?";
-    var datos = [req.body.nombre, req.body.apellidos, req.body.usuario];
-
-    // Si la contraseña NO está vacía, la añadimos a la consulta y a los datos
-    if (req.body.password && req.body.password !== "") {
-        sql += ", password = ?";
-        datos.push(req.body.password);
-    }
-
-    // Condición WHERE al final (su valor va el último en datos)
-    sql += " WHERE id = ?";
-    datos.push(idGestor);
-
-    conexion.query(sql, datos, function (err, result) {
-        if (err) {
-            // Usuario que ya existe
-            if (err.code === "ER_DUP_ENTRY"){
-                return res.status(409).json("Error: El usuario ya existe");
-            }
-            console.log("Error al actualizar:", err);
+    // Postgres no tiene affectedRows/changedRows, así que primero se lee el gestor actual
+    supabase.from("gestores").select("*").eq("id", idGestor).then(function(resultado){
+        if (resultado.error) {
+            console.log("Error al realizar la select", resultado.error);
             return res.status(500).json("Error interno del servidor");
         }
-
-        // result.affectedRows --> cuántas filas coincidieron con el WHERE
-        if (result.affectedRows == 0) {
+        // Si no hay ninguna fila, el gestor no existe
+        if (resultado.data.length == 0) {
             return res.status(404).json("Error, el gestor con id " + idGestor + " no existe");
         }
+        var actual = resultado.data[0];
 
-        // result.changedRows --> cuántas filas cambiaron
-        if (result.changedRows == 0) {
+        // Base sin el password de momento
+        var cambios = {nombre: req.body.nombre, apellidos: req.body.apellidos, usuario: req.body.usuario};
+
+        // Si la contraseña NO está vacía, la añadimos a los cambios
+        if (req.body.password && req.body.password !== "") {
+            cambios.password = req.body.password;
+        }
+
+        // Equivale a changedRows: se comprueba si algún campo es distinto del que ya había
+        var hayCambios = false;
+        for (var campo in cambios) {
+            if (cambios[campo] != actual[campo]) {
+                hayCambios = true;
+            }
+        }
+        if (!hayCambios) {
             return res.status(400).json("Error. Debes editar algún campo");
         }
 
-        res.status(200).json("Datos modificados correctamente");
+        supabase.from("gestores").update(cambios).eq("id", idGestor).then(function(resultadoUpdate){
+            if (resultadoUpdate.error) {
+                // Usuario que ya existe
+                if (resultadoUpdate.error.code === "23505"){
+                    return res.status(409).json("Error: El usuario ya existe");
+                }
+                console.log("Error al actualizar:", resultadoUpdate.error);
+                return res.status(500).json("Error interno del servidor");
+            }
+            res.status(200).json("Datos modificados correctamente");
+        });
     });
 });
 
@@ -154,18 +158,17 @@ app.put("/api/gestores/:id", function(req, res){
 // Obtener datos del gestor tras actualizar
 app.get("/api/gestores/:id", function(req,res){
     var idGestor = req.params.id;
-    var sql = "SELECT nombre, apellidos, usuario FROM gestores WHERE id = ?";
-    conexion.query(sql, [idGestor], function (err, filas) {
-        if (err) {
-            console.log("Error al realizar la select", err);
+    supabase.from("gestores").select("nombre, apellidos, usuario").eq("id", idGestor).then(function(resultado){
+        if (resultado.error) {
+            console.log("Error al realizar la select", resultado.error);
             res.status(500).json("Error al realizar la consulta");
             return;
         }
-        if (filas.length == 0) {
+        if (resultado.data.length == 0) {
             res.status(404).json("Error, el gestor con id " + idGestor + " no existe");
             return;
         }
-        var gestor = filas[0];
+        var gestor = resultado.data[0];
         res.status(200).json({nombre: gestor.nombre, apellidos: gestor.apellidos, usuario: gestor.usuario});
         return;
     });
@@ -173,42 +176,40 @@ app.get("/api/gestores/:id", function(req,res){
 
 
 // Lista de categorías
+// order("id") mantiene el orden por id, ya que sin él Postgres no garantiza ningún orden
 app.get("/api/categorias", function(req,res){
-    var sql ="SELECT * FROM categorias";
-    conexion.query(sql, function (err, categorias) {
-        if (err) {
-            console.log("Error al realizar la select", err);
+    supabase.from("categorias").select("*").order("id").then(function(resultado){
+        if (resultado.error) {
+            console.log("Error al realizar la select", resultado.error);
             res.status(500).json("Error al realizar la consulta");
             return;
         }
         // Mando el array de objetos que contiene todas las categorías, cada objeto es una categoría con sus propiedades
-        res.json(categorias);
+        res.json(resultado.data);
     });
 })
 
 // Lista de modelos
 app.get("/api/modelos", function(req,res){
-    var sql ="SELECT * FROM modelos";
-    conexion.query(sql, function (err, modelos) {
-        if (err) {
-            console.log("Error al realizar la select", err);
+    supabase.from("modelos").select("*").order("id").then(function(resultado){
+        if (resultado.error) {
+            console.log("Error al realizar la select", resultado.error);
             res.status(500).json("Error al realizar la consulta");
             return;
         }
-        res.json(modelos);
+        res.json(resultado.data);
     });
 })
 
 // Lista de ubicaciones
 app.get("/api/ubicaciones", function(req,res){
-    var sql ="SELECT * FROM ubicaciones";
-    conexion.query(sql, function (err, ubicaciones) {
-        if (err) {
-            console.log("Error al realizar la select", err);
+    supabase.from("ubicaciones").select("*").order("id").then(function(resultado){
+        if (resultado.error) {
+            console.log("Error al realizar la select", resultado.error);
             res.status(500).json("Error al realizar la consulta");
             return;
         }
-        res.json(ubicaciones);
+        res.json(resultado.data);
     });
 })
 
@@ -220,32 +221,36 @@ app.get("/api/recursos", function(req, res){
     var ubicacion = req.query.ubicacion;
     var estado = req.query.estado;
 
-    // Unimos recursos con modelos para poder filtrar por categoría
-    var sql = "SELECT r.* FROM recursos r JOIN modelos m ON r.modelo = m.id WHERE 1=1";
-    var params = [];
-
+    var consulta;
     if (categoria && categoria != -1) {
-        sql += " AND m.categoria = ?";
-        params.push(categoria);
+        // Equivale al JOIN con modelos: "modelos!inner(categoria)" une cada recurso con su modelo
+        // y solo deja los recursos cuyo modelo cumple el filtro de categoría
+        consulta = supabase.from("recursos").select("*, modelos!inner(categoria)").eq("modelos.categoria", categoria);
+    } else {
+        consulta = supabase.from("recursos").select("*");
     }
+
+    // Cada filtro se añade a la consulta solo si el usuario lo ha elegido (-1 = Todos)
     if (modelo && modelo != -1) {
-        sql += " AND r.modelo = ?";
-        params.push(modelo);
+        consulta = consulta.eq("modelo", modelo);
     }
     if (ubicacion && ubicacion != -1) {
-        sql += " AND r.ubicacion = ?";
-        params.push(ubicacion);
+        consulta = consulta.eq("ubicacion", ubicacion);
     }
     if (estado !== undefined && estado !== "" && estado != -1) {
-        sql += " AND r.estado = ?";
-        params.push(estado);
+        consulta = consulta.eq("estado", estado);
     }
 
-    conexion.query(sql, params, function (err, recursos) {
-        if (err) {
-            console.log("Error al filtrar recursos", err);
+    consulta.order("id").then(function(resultado){
+        if (resultado.error) {
+            console.log("Error al filtrar recursos", resultado.error);
             res.status(500).json("Error al realizar la consulta");
             return;
+        }
+        var recursos = resultado.data;
+        // El JOIN añade una propiedad "modelos" a cada recurso que el cliente no necesita: se elimina
+        for (var i = 0; i < recursos.length; i++) {
+            delete recursos[i].modelos;
         }
         res.json(recursos);
     });
@@ -254,14 +259,14 @@ app.get("/api/recursos", function(req, res){
 //  PRINCIPAL
 app.delete("/api/recursos/:id", function(req, res){
     var idRecurso = req.params.id;
-    var sql = "DELETE FROM recursos WHERE id = ?";
-    conexion.query(sql, [idRecurso], function (err, resultado) {
-        if (err) {
-            console.log("Error al eliminar el recurso", err);
+    // select() al final hace que devuelva las filas borradas, así sabemos si existía (equivale a affectedRows)
+    supabase.from("recursos").delete().eq("id", idRecurso).select().then(function(resultado){
+        if (resultado.error) {
+            console.log("Error al eliminar el recurso", resultado.error);
             res.status(500).json("Error al eliminar el recurso");
             return;
         }
-        if (resultado.affectedRows == 0) {
+        if (resultado.data.length == 0) {
             res.status(404).json("Error, el recurso con id " + idRecurso + " no existe");
             return;
         }
@@ -272,36 +277,35 @@ app.delete("/api/recursos/:id", function(req, res){
 // Abrir recurso para modificarlo
 app.get("/api/recursos/:id", function(req, res){
     var idRecurso = req.params.id;
-    var sql = "SELECT * FROM recursos WHERE id = ?";
-    conexion.query(sql, [idRecurso], function (err, filas) {
-        if (err) {
-            console.log("Error al obtener el recurso", err);
+    supabase.from("recursos").select("*").eq("id", idRecurso).then(function(resultado){
+        if (resultado.error) {
+            console.log("Error al obtener el recurso", resultado.error);
             res.status(500).json("Error al obtener el recurso");
             return;
         }
-        if (filas.length == 0) {
+        if (resultado.data.length == 0) {
             res.status(404).json("Error, el recurso con id " + idRecurso + " no existe");
             return;
         }
-        res.json(filas[0]); // Devuelve el recurso encontrado
+        res.json(resultado.data[0]); // Devuelve el recurso encontrado
     });
 });
 
 // RECURSOS
 // Crea nuevo recurso
 app.post("/api/recursos", function(req, res){
-    var sql = "INSERT INTO recursos (modelo, ubicacion, numero_serie, estado) VALUES (?, ?, ?, ?)";
-    var datos = [req.body.modelo, req.body.ubicacion, req.body.numero_serie, req.body.estado];
+    var recurso = {modelo: req.body.modelo, ubicacion: req.body.ubicacion, numero_serie: req.body.numero_serie, estado: req.body.estado};
 
-    conexion.query(sql, datos, function(err, result) {
-        if (err) {
-            if (err.code === "ER_DUP_ENTRY") {
+    supabase.from("recursos").insert(recurso).then(function(resultado) {
+        if (resultado.error) {
+            if (resultado.error.code === "23505") {
                 return res.status(409).json("Error: Ya existe un recurso con ese número de serie");
             }
-            if (err.code === "ER_NO_REFERENCED_ROW_2") {
+            // 23503 es el código de Postgres para una clave foránea que no existe (equivale a ER_NO_REFERENCED_ROW_2)
+            if (resultado.error.code === "23503") {
                 return res.status(400).json("Error: El modelo o la ubicación seleccionada no existen");
             }
-            console.log("Error al crear el recurso:", err);
+            console.log("Error al crear el recurso:", resultado.error);
             return res.status(500).json("Error interno del servidor");
         }
         res.status(201).json("Recurso creado correctamente");
@@ -312,28 +316,43 @@ app.post("/api/recursos", function(req, res){
 // Modifica recurso existente
 app.put("/api/recursos/:id", function(req, res){
     var idRecurso = req.params.id;
-    var sql = "UPDATE recursos SET modelo = ?, ubicacion = ?, numero_serie = ?, estado = ? WHERE id = ?";
-    var datos = [req.body.modelo, req.body.ubicacion, req.body.numero_serie, req.body.estado, idRecurso];
+    var cambios = {modelo: req.body.modelo, ubicacion: req.body.ubicacion, numero_serie: req.body.numero_serie, estado: req.body.estado};
 
-    conexion.query(sql, datos, function(err, result) {
-        if (err) {
-            if (err.code === "ER_DUP_ENTRY") {
-                return res.status(409).json("Error: Ya existe otro recurso con ese número de serie");
-            }
-            if (err.code === "ER_NO_REFERENCED_ROW_2") {
-                return res.status(400).json("Error: El modelo o la ubicación seleccionada no existen");
-            }
-            console.log("Error al actualizar el recurso:", err);
+    // Como en la modificación de gestores, primero se lee el recurso actual (existencia y cambios)
+    supabase.from("recursos").select("*").eq("id", idRecurso).then(function(resultado) {
+        if (resultado.error) {
+            console.log("Error al actualizar el recurso:", resultado.error);
             return res.status(500).json("Error interno del servidor");
         }
-
-        if (result.affectedRows === 0) {
+        if (resultado.data.length == 0) {
             return res.status(404).json("Error, el recurso con id " + idRecurso + " no existe");
         }
-        if (result.changedRows === 0) {
+        var actual = resultado.data[0];
+
+        // Equivale a changedRows
+        var hayCambios = false;
+        for (var campo in cambios) {
+            if (cambios[campo] != actual[campo]) {
+                hayCambios = true;
+            }
+        }
+        if (!hayCambios) {
             return res.status(400).json("Error, no has modificado ningún campo");
         }
-        res.status(200).json("Recurso modificado correctamente");
+
+        supabase.from("recursos").update(cambios).eq("id", idRecurso).then(function(resultadoUpdate) {
+            if (resultadoUpdate.error) {
+                if (resultadoUpdate.error.code === "23505") {
+                    return res.status(409).json("Error: Ya existe otro recurso con ese número de serie");
+                }
+                if (resultadoUpdate.error.code === "23503") {
+                    return res.status(400).json("Error: El modelo o la ubicación seleccionada no existen");
+                }
+                console.log("Error al actualizar el recurso:", resultadoUpdate.error);
+                return res.status(500).json("Error interno del servidor");
+            }
+            res.status(200).json("Recurso modificado correctamente");
+        });
     });
 });
 
@@ -341,26 +360,24 @@ app.put("/api/recursos/:id", function(req, res){
 app.get("/api/recursos/:id/reservas", function(req, res){
     var idRecurso = req.params.id;
 
-    var sql = "SELECT id FROM recursos WHERE id = ?";
-    conexion.query(sql, [idRecurso], function (err, id) {
-        if (err) {
-            console.log("Error al comprobar el recurso", err);
+    supabase.from("recursos").select("id").eq("id", idRecurso).then(function(resultado){
+        if (resultado.error) {
+            console.log("Error al comprobar el recurso", resultado.error);
             res.status(500).json("Error al realizar la consulta");
             return;
         }
-        if (id.length == 0) {
+        if (resultado.data.length == 0) {
             res.status(404).json("Error, recurso con id " + idRecurso + " no existe");
             return;
         }
 
-        var sql = "SELECT * FROM reservas WHERE recurso = ?";
-        conexion.query(sql, [idRecurso], function (err, reservasRecurso) {
-            if (err) {
-                console.log("Error al obtener las reservas", err);
+        supabase.from("reservas").select("*").eq("recurso", idRecurso).order("id").then(function(resultadoReservas){
+            if (resultadoReservas.error) {
+                console.log("Error al obtener las reservas", resultadoReservas.error);
                 res.status(500).json("Error al realizar la consulta");
                 return;
             }
-            res.json(reservasRecurso);
+            res.json(resultadoReservas.data);
         });
     });
 });
@@ -369,26 +386,24 @@ app.get("/api/recursos/:id/reservas", function(req, res){
 app.get("/api/recursos/:id/resenyas", function(req, res){
     var idRecurso = req.params.id;
 
-    var sql = "SELECT id FROM recursos WHERE id = ?";
-    conexion.query(sql, [idRecurso], function (err, id) {
-        if (err) {
-            console.log("Error al comprobar el recurso", err);
+    supabase.from("recursos").select("id").eq("id", idRecurso).then(function(resultado){
+        if (resultado.error) {
+            console.log("Error al comprobar el recurso", resultado.error);
             res.status(500).json("Error al realizar la consulta");
             return;
         }
-        if (id.length == 0) {
+        if (resultado.data.length == 0) {
             res.status(404).json("Error, recurso con id " + idRecurso + " no existe");
             return;
         }
 
-        var sql = "SELECT * FROM resenyas WHERE recurso = ?";
-        conexion.query(sql, [idRecurso], function (err, resenyasRecurso) {
-            if (err) {
-                console.log("Error al obtener las resenyas", err);
+        supabase.from("resenyas").select("*").eq("recurso", idRecurso).order("id").then(function(resultadoResenyas){
+            if (resultadoResenyas.error) {
+                console.log("Error al obtener las resenyas", resultadoResenyas.error);
                 res.status(500).json("Error al realizar la consulta");
                 return;
             }
-            res.json(resenyasRecurso);
+            res.json(resultadoResenyas.data);
         });
     });
 });
@@ -397,19 +412,18 @@ app.get("/api/recursos/:id/resenyas", function(req, res){
 app.get("/api/sanitarios/:id", function(req, res){
     var idSanitario = req.params.id;
 
-    var sql = "SELECT nombre, apellidos FROM sanitarios WHERE id = ?"
-    conexion.query(sql, [idSanitario], function (err, filas){
-        if (err) {
-            console.log("Error al comprobar el recurso", err);
+    supabase.from("sanitarios").select("nombre, apellidos").eq("id", idSanitario).then(function(resultado){
+        if (resultado.error) {
+            console.log("Error al comprobar el recurso", resultado.error);
             res.status(500).json("Error al realizar la consulta");
             return;
         }
-        if (filas.length == 0) {
+        if (resultado.data.length == 0) {
             res.status(404).json("Error, sanitario con id " + idSanitario + " no existe");
             return;
         }
-        res.json(filas[0])
-    })
+        res.json(resultado.data[0]);
+    });
 });
 
 // Iniciar servidor --> siempre último paso
