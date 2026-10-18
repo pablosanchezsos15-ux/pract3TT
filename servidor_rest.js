@@ -5,6 +5,7 @@ var clave = 'miSecretoMasOscuro'; //? clave para codificar / decodificar el toke
 var app = express();
 // Entonces la URL donde se servirá la páginas será http://localhost:3000/appCliente/index.html
 // URL en internet https://pract3tt.onrender.com/AppCliente
+// Prueba
 app.use("/appCliente", express.static("cliente_rest")); // express.statitic(Nombre de la carpeta donde se encuentran los archivos del cliente)
 app.use(express.json());
 
