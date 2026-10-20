@@ -87,6 +87,8 @@ app.use("/api", function (req, res, next) { //?
         return; //?
     } //?
 
+    console.log("El contenido del token es:", contenidoToken);
+
     //? Validar el formato del token
     if (!contenidoToken || !contenidoToken.expira || !contenidoToken.usuario) { //?
         res.status(401).json("El formato del token no es adecuado"); //?
